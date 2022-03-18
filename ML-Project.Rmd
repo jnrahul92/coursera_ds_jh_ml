@@ -1,0 +1,152 @@
+---
+title: "ML-Project"
+author: "Rahul Jain"
+date: "18/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Instructions
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website [ here](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset).  
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+## Data
+
+The training data for this project are available [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)  
+The test data are available [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+# Analysis
+
+## Summary
+
+I read the documentation shared within the assignment to find insights about the data and decided to fit Random Forest and Gradient Boosting algorithm to data. From the model fit and accuracy metrics, I observed that accuracy for Random Forest was 99.76% for test data as compared to GBM which was around 98.8% i.e, 1% higher for Random Forest as compared to GBM with cross validation for fitting multiple models to the data to find the best model. Below report details the steps that I covered for the analysis.
+
+## Library Import
+```{r echo=TRUE}
+library(caret)
+library(randomForest)
+library(ggplot2)
+```
+
+## Data Download
+```{r echo=TRUE}
+download.file(url = 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv', 
+                destfile = 'train.csv', method = 'curl', quiet = TRUE)
+download.file(url = 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv', 
+                destfile = 'test.csv', method = 'curl', quiet = TRUE)
+```
+
+## Data Import
+```{r echo=TRUE}
+trainData <- read.csv("train.csv")
+testData <- read.csv("test.csv")
+```
+
+## Preprocessing
+
+#### Looking at structure of the data
+```{r echo=TRUE}
+str(trainData)
+```
+
+There are around 160 variables in the training set with 19622 observations. As there are lots of variables within the dataset, exploring data by visualization would be very time consuming. We can use pdf given in the assignment to understand the data more.
+Link -> http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har
+
+
+Removing first 5 columns from the dataset as they are not related to the exercise
+
+```{r echo=TRUE}
+trainData <- trainData[,6:ncol(trainData)]
+```
+
+#### Splitting of training data into train and test set
+
+```{r echo=TRUE}
+set.seed(42)
+inTrain <- createDataPartition(trainData$classe,p=0.7,list = FALSE)
+training <- trainData[inTrain,]
+testing <- trainData[-inTrain,]
+```
+
+#### Remove correlated variables from dataset
+
+```{r echo=TRUE}
+nzv <- nearZeroVar(trainData,saveMetrics = TRUE)
+keepFt <- row.names(nzv[nzv$nzv==FALSE,])
+training <- training[,keepFt]
+```
+
+After removing similar variables, we have around 95 features left within data. We can also remove variables with missing values
+
+#### Remove variables with lot of missing data
+
+```{r echo=TRUE}
+training <- training[,colSums(is.na(training)) == 0]
+```
+
+After removing variables with missing data, we have around 54 variables left
+
+## Model Training
+
+### Setting up cross validation control
+
+```{r echo=TRUE}
+cv <- trainControl(method = "cv",number = 5)
+```
+
+### Random Forest Model
+
+#### Fitting Random Forest Model
+
+```{r echo=TRUE}
+set.seed(42)
+fitRF <- train(classe~.,data = training,method="rf",trControl = cv)
+```
+
+#### Summary of model fit with Ramdon Forest
+
+```{r echo=TRUE}
+fitRF$finalModel
+```
+
+Out of bag samples error rate is 0.2% which is very good
+
+#### Checking model accuracy on testing set
+
+```{r echo=TRUE}
+predRF <- predict(fitRF, newdata = testing)
+confusionMatrix(predRF,factor(testing$classe))
+```
+
+On testing data Random Forest shows 99.76% accuracy which should be very hard to beat.
+
+### Gradient Bossting Model
+
+#### Fitting GBM Model
+
+```{r echo=TRUE}
+fitGBM <- train(classe~.,data = training, method = "gbm", trControl = cv, verbose = FALSE)
+```
+
+#### Summary of model fit with GBM
+
+```{r echo=TRUE}
+summary(fitGBM$finalModel)
+```
+
+Plot and table shows relative influence of each variable on the model fit. Top variables are:
+1) num_window 2) roll_belt 3)pitch_forearm
+
+#### Checking accuracy and other statistics
+
+```{r echo=TRUE}
+predGBM <- predict(fitGBM, newdata = testing)
+confusionMatrix(predGBM,factor(testing$classe))
+```
+
+GBM Model has accuracy of around 98.84% which is lower as compared to Random Forest
